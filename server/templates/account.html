@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<main>
+    <div class="form-wrapper">
+        <h2>Account</h2>
+        <p>Hi {{ username }}, thanks for playing the game!</p>
+        <a class="button" href="/logout">Logout</a>
+    
+        <h3>Change Username</h3>
+        <form method="POST" action="/account/username">
+            <div>
+                <label for="username">Username</label>
+                <input id="username" type="text" name="username" value="{{ username }}">
+                {% for err in username_error %}
+                    <span class="error">{{ err }}</span>
+                {% endfor %}
+            </div>
+            <input type="submit" value="Apply Changes">
+        </form>
+   
+        <h3>Change Password</h3>
+        <form method="POST" action="/account/password">
+            <div>
+                <label for="password">Password</label>
+                <input id="password" type="password" name="password">
+                {% for err in password_error %}
+                    <span class="error">{{ err }}</span>
+                {% endfor %}
+            </div>
+            <div>
+                <label for="password-repeat">Repeat Password</label>
+                <input id="password-repeat" name="password_repeat" type="password">
+                {% for err in password_repeat_error %}
+                    <span class="error">{{ err }}</span>
+                {% endfor %}
+            </div>
+            <input type="hidden" name="username" value="{{ username }}">
+            <input type="submit" value="Apply Changes">
+        </form>
+    </div>
+</main>
+{% endblock %}
