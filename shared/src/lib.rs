@@ -50,7 +50,7 @@ pub trait State: Clone + Debug + Send + Sized + Default + 'static {
 
     const DURATION_PER_TICK: Duration;
 
-    fn update(&mut self, rng: &mut impl Rng, event: Event<Self>);
+    fn update(&mut self, rng: &mut impl Rng, event: Event<Self>, user_data: Option<&Self::UserData>);
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,7 +106,13 @@ impl<S: State> StateWrapper<S> {
 
         let mut rng = ChaCha8Rng::from_seed(seed);
 
-        self.state.update(&mut rng, event);
+        let user_id = if let Event::ClientEvent(_, user_id) = &event {
+            Some(user_id.clone())
+        } else {
+            None
+        };
+
+        self.state.update(&mut rng, event, user_id.and_then(|user_id| self.users.get(&user_id)));
 
         Ok(())
     }
