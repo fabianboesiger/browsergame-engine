@@ -44,7 +44,6 @@ impl<S: State> ClientState<S> {
 
     pub fn get_user_data(&self, user_id: &S::UserId) -> Option<&S::UserData> {
         self.state.as_ref().and_then(|data| {
-            log!(data.state.users);
             data.state.users.get(user_id)
         })
     }
