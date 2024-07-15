@@ -179,7 +179,7 @@ impl<S: State> ServerState<S> {
 
             while let Some(event) = req_receiver.recv().await
             {
-                tracing::info!("handling event: {event:?}");
+                tracing::debug!("handling event: {event:?}");
 
 
                 let mut state = game.write().await;
@@ -196,7 +196,7 @@ impl<S: State> ServerState<S> {
                     unreachable!();
                 }
 
-                tracing::info!("updated state: {state:?}");
+                tracing::debug!("updated state: {state:?}");
                 
                 res_sender.send(Res::Event(event.clone())).ok();
 
