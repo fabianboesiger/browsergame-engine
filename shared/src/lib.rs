@@ -14,6 +14,8 @@ use std::fmt::Debug;
 pub type Seed = [u8; 32];
 pub type Checksum = [u8; 32];
 
+pub type GameId = i64;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EventData<S: State> {
     pub event: Event<S>,
@@ -51,6 +53,7 @@ pub trait State: Clone + Debug + Send + Sized + Default + 'static {
     const DURATION_PER_TICK: Duration;
 
     fn update(&mut self, rng: &mut impl Rng, event: Event<Self>, user_data: &CustomMap<Self::UserId, Self::UserData>);
+    fn has_winner(&self) -> Option<Self::UserId>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,7 +75,8 @@ pub trait UserId: Clone + Serialize + DeserializeOwned + Send + Debug + PartialE
 pub trait UserData: Clone + Serialize + DeserializeOwned + Send + Debug + Send + 'static {}
 
 pub enum Error {
-    InvalidChecksum
+    InvalidChecksum,
+    WorldClosed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,6 +111,10 @@ impl<S: State> StateWrapper<S> {
         let mut rng = ChaCha8Rng::from_seed(seed);
 
         self.state.update(&mut rng, event, &self.users);
+
+        if self.state.has_winner().is_some() {
+            return Err(Error::WorldClosed);
+        }
 
         Ok(())
     }
