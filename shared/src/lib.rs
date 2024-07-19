@@ -35,7 +35,7 @@ pub enum Req<S: State> {
 pub enum Res<S: State> {
     Sync(SyncData<S>),
     Event(EventData<S>),
-    UserUpdate(S::UserId, S::UserData),
+    UserUpdate(CustomMap<S::UserId, S::UserData>),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

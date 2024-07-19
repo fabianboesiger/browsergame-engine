@@ -3,7 +3,7 @@ use std::rc::Rc;
 use seed::{prelude::*, *};
 use serde::{de::DeserializeOwned, Serialize};
 use engine_shared::{
-    ClientEvent, EventData, GameId, Req, Res, State, SyncData
+    utils::custom_map::CustomMap, ClientEvent, EventData, GameId, Req, Res, State, SyncData
 };
 
 pub struct ClientState<S: State> {
@@ -116,9 +116,9 @@ impl<S: State> ClientState<S> {
                     }
                 }
             }
-            EventWrapper::UserUpdate(user_id, user_data) => {
+            EventWrapper::UserUpdate(map) => {
                 if let Some(SyncData { state, .. }) = &mut self.state {
-                    state.users.insert(user_id, user_data);
+                    state.users = map;
                 }
             },
         }
@@ -160,8 +160,8 @@ impl<S: State> ClientState<S> {
                     Res::Sync(sync) => {
                         msg_sender(Some(M::from(EventWrapper::InitGameState(sync))));
                     }
-                    Res::UserUpdate(user_id, user_data) => {
-                        msg_sender(Some(M::from(EventWrapper::UserUpdate(user_id, user_data))));
+                    Res::UserUpdate(map) => {
+                        msg_sender(Some(M::from(EventWrapper::UserUpdate(map))));
                     }
                 }
             });
@@ -179,5 +179,5 @@ pub enum EventWrapper<S: State> {
     SendGameEvent(S::ClientEvent),
     ReceiveGameEvent(EventData<S>),
     InitGameState(SyncData<S>),
-    UserUpdate(S::UserId, S::UserData),
+    UserUpdate(CustomMap<S::UserId, S::UserData>),
 }

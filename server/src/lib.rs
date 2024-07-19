@@ -1,9 +1,8 @@
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use engine_shared::{utils::custom_map::CustomMap, Event, EventData, GameId, Req, Res, Seed, State, StateWrapper, SyncData};
-use std::{collections::HashMap, sync::{atomic::AtomicBool, Arc}};
+use std::{collections::HashMap, sync::Arc};
 use tokio::{
-    sync::{broadcast, mpsc, Notify, RwLock},
-    time,
+    sync::{broadcast, mpsc, Notify, RwLock}, task::JoinHandle, time
 };
 use serde::Serialize;
 
@@ -17,7 +16,7 @@ struct ServerStateImpl<S: State> {
 
 #[derive(Clone)]
 pub struct ServerState<S: State> {
-    update_user_data: Arc<Notify>, 
+    update_user_data: Arc<Notify>,
     updated_user_data: Arc<Notify>,
     games: HashMap<GameId, Arc<ServerStateImpl<S>>>
 }
@@ -73,15 +72,13 @@ impl<S: State> ClientConnectionRes<S> {
             }
             _ = self.updated_user_data.notified() => {
                 let state_wrapper = state.read().await;
-                Some(Res::Sync(SyncData {
-                    user_id: self.user_id.clone(),
-                    state: state_wrapper.clone(),
-                }))
+                Some(Res::UserUpdate(state_wrapper.users.clone()))
             }
             res = self.res_receiver.recv() => {
                 match res {
                     Ok(res) => Some(res),
                     Err(broadcast::error::RecvError::Lagged(_)) => {
+                        // If receiver lagged, retransmit the whole state.
                         let state_wrapper = state.read().await;
                         Some(Res::Sync(SyncData {
                             user_id: self.user_id.clone(),
@@ -101,9 +98,12 @@ impl<S: State> ClientConnectionRes<S> {
 
 #[async_trait::async_trait]
 pub trait BackendStore<S: State>: Send + Sync + 'static {
-    async fn load_game(&self, game_id: GameId) -> S;
-    async fn save_game(&self, game_id: GameId, state: &S);
-    async fn load_user_data(&self) -> CustomMap<S::UserId, S::UserData>;
+    type Error: std::error::Error;
+
+    async fn create_game(&self) -> Result<GameId, Self::Error>;
+    async fn load_game(&self, game_id: GameId) -> Result<S, Self::Error>;
+    async fn save_game(&self, game_id: GameId, state: &S) -> Result<(), Self::Error>;
+    async fn load_user_data(&self) -> Result<CustomMap<S::UserId, S::UserData>, Self::Error>;
 }
 
 impl<S: State> ServerState<S> {
@@ -116,12 +116,13 @@ impl<S: State> ServerState<S> {
         }
     }
 
-    pub async fn add<B: BackendStore<S>>(&mut self, store: B, game_id: GameId)
+    pub async fn load<B: BackendStore<S>>(&mut self, store: B, game_id: GameId) -> Result<(), B::Error>
     where
         S: Clone + Serialize,
         RwLock<StateWrapper<S>>: Sync,
+        B::Error: Send,
     {
-        let world_closed = Arc::new(Notify::new());
+        let (set_state_to_save, mut get_state_to_save) = mpsc::channel::<S>(1);
 
         let store = Arc::new(store);
         let (req_sender, mut req_receiver) = mpsc::unbounded_channel::<Event<S>>();
@@ -129,8 +130,8 @@ impl<S: State> ServerState<S> {
 
         let req_sender_clone = req_sender.clone();
 
-        let state = store.load_game(game_id).await;
-        let user_data = store.load_user_data().await;
+        let state = store.load_game(game_id).await?;
+        let user_data = store.load_user_data().await?;
         let state = RwLock::new(StateWrapper {
             state,
             users: CustomMap::from(user_data),
@@ -142,8 +143,6 @@ impl<S: State> ServerState<S> {
             req_sender,
         });
 
-        let game_state_clone = game_state.clone();
-        let store_clone = store.clone();
         let join_handle_tick = tokio::spawn(async move {
             let mut interval = time::interval(S::DURATION_PER_TICK);
 
@@ -153,9 +152,6 @@ impl<S: State> ServerState<S> {
                 req_sender_clone
                     .send(Event::ServerEvent(<S::ServerEvent as engine_shared::ServerEvent<S>>::tick()))
                     .ok();
-
-                let state_wrapper = game_state_clone.state.read().await.clone();
-                store_clone.save_game(game_id, &state_wrapper.state).await;
             }
         });
 
@@ -163,13 +159,13 @@ impl<S: State> ServerState<S> {
         let store_clone = store.clone();
         let update_user_data = self.update_user_data.clone();
         let updated_user_data = self.updated_user_data.clone();
-        let join_handle_update_user_data = tokio::spawn(async move {
+        let join_handle_update_user_data: JoinHandle<Result<(), B::Error>> = tokio::spawn(async move {
             let update_user_data_clone = update_user_data.clone();
             let updated_user_data_clone = updated_user_data.clone();
 
             loop {
                 update_user_data_clone.notified().await;
-                game_state_clone.state.write().await.users = store_clone.load_user_data().await;
+                game_state_clone.state.write().await.users = store_clone.load_user_data().await?;
                 updated_user_data_clone.notify_waiters();
             }
         });
@@ -199,12 +195,14 @@ impl<S: State> ServerState<S> {
                     state_checksum,
                 };
 
-                match state_wrapper.update_checked(event.clone()) {
-                    Ok(()) => {},
-                    Err(engine_shared::Error::WorldClosed) => {
-                        join_handle_tick.abort();
-                        join_handle_update_user_data.abort();
+                let res = state_wrapper.update_checked(event.clone());
 
+                match res {
+                    Ok(()) => {
+                        set_state_to_save.try_send(state_wrapper.state.clone()).ok();
+                    },
+                    Err(engine_shared::Error::WorldClosed) => {
+                        set_state_to_save.blocking_send(state_wrapper.state.clone()).ok();
                         break;
                     },
                     Err(_) => panic!()
@@ -216,9 +214,22 @@ impl<S: State> ServerState<S> {
             }
         });
 
-      
+        let _: JoinHandle<Result<(), B::Error>> = tokio::spawn(async move {
+            while let Some(state) = get_state_to_save.recv().await {
+                store.save_game(game_id, &state).await?;
+            }
+
+            join_handle_tick.abort();
+            join_handle_update_user_data.abort();
+
+            tracing::info!("the world {} was closed", game_id);
+
+            Ok(())
+        });
 
         self.games.insert(game_id, game_state);
+
+        Ok(())
     }
 
 
