@@ -14,11 +14,23 @@ struct ServerStateImpl<S: State> {
     req_sender: mpsc::UnboundedSender<Event<S>>,
 }
 
-#[derive(Clone)]
-pub struct ServerState<S: State> {
+pub struct ServerState<S: State, B: BackendStore<S>> {
     update_user_data: Arc<Notify>,
     updated_user_data: Arc<Notify>,
-    games: HashMap<GameId, Arc<ServerStateImpl<S>>>
+    games: Arc<RwLock<HashMap<GameId, Arc<ServerStateImpl<S>>>>>,
+    store: Arc<B>,
+}
+
+impl<S: State, B: BackendStore<S>> Clone for ServerState<S, B> {
+    fn clone(&self) -> Self {
+        ServerState {
+            update_user_data: self.update_user_data.clone(),
+            updated_user_data: self.updated_user_data.clone(),
+            games: self.games.clone(),
+            store: self.store.clone(),
+        }
+    }
+
 }
 
 #[derive(Debug, Clone)]
@@ -49,18 +61,19 @@ impl<S: State> ServerConnectionReq<S> {
     }
 }
 
-pub struct ClientConnectionRes<S: State> {
+pub struct ClientConnectionRes<S: State, B: BackendStore<S>> {
     user_id: S::UserId,
     game_id: GameId,
-    state: ServerState<S>,
+    state: ServerState<S, B>,
     sync_state: Arc<Notify>,
     updated_user_data: Arc<Notify>,
     res_receiver: broadcast::Receiver<Res<S>>,
 }
 
-impl<S: State> ClientConnectionRes<S> {
+impl<S: State, B: BackendStore<S>> ClientConnectionRes<S, B> {
     pub async fn poll(&mut self) -> Option<Res<S>> {
-        let state = &self.state.games.get(&self.game_id).unwrap().state;
+        let games = self.state.games.read().await;
+        let state = &games.get(&self.game_id).unwrap().state;
 
         tokio::select! {
             _ = self.sync_state.notified() => {
@@ -106,17 +119,30 @@ pub trait BackendStore<S: State>: Send + Sync + 'static {
     async fn load_user_data(&self) -> Result<CustomMap<S::UserId, S::UserData>, Self::Error>;
 }
 
-impl<S: State> ServerState<S> {
+impl<S: State, B: BackendStore<S>> ServerState<S, B> {
 
-    pub fn new() -> Self {
+    pub fn new(store: B) -> Self {
         ServerState {
-            games: HashMap::new(),
+            games: Arc::new(RwLock::new(HashMap::new())),
             update_user_data: Arc::new(Notify::new()),
             updated_user_data: Arc::new(Notify::new()),
+            store: Arc::new(store),
         }
     }
 
-    pub async fn load<B: BackendStore<S>>(&mut self, store: B, game_id: GameId) -> Result<(), B::Error>
+    pub async fn create(&self) -> Result<(), B::Error>
+    where
+        S: Clone + Serialize,
+        RwLock<StateWrapper<S>>: Sync,
+        B::Error: Send,
+    {
+        let game_id = self.store.create_game().await?;
+        self.load(game_id).await?;
+
+        Ok(())
+    }
+
+    pub async fn load(&self, game_id: GameId) -> Result<(), B::Error>
     where
         S: Clone + Serialize,
         RwLock<StateWrapper<S>>: Sync,
@@ -124,14 +150,13 @@ impl<S: State> ServerState<S> {
     {
         let (set_state_to_save, mut get_state_to_save) = mpsc::channel::<S>(1);
 
-        let store = Arc::new(store);
         let (req_sender, mut req_receiver) = mpsc::unbounded_channel::<Event<S>>();
         let (res_sender, _res_receiver) = broadcast::channel::<Res<S>>(128);
 
         let req_sender_clone = req_sender.clone();
 
-        let state = store.load_game(game_id).await?;
-        let user_data = store.load_user_data().await?;
+        let state = self.store.load_game(game_id).await?;
+        let user_data = self.store.load_user_data().await?;
         let state = RwLock::new(StateWrapper {
             state,
             users: CustomMap::from(user_data),
@@ -156,7 +181,7 @@ impl<S: State> ServerState<S> {
         });
 
         let game_state_clone = game_state.clone();
-        let store_clone = store.clone();
+        let store_clone = self.store.clone();
         let update_user_data = self.update_user_data.clone();
         let updated_user_data = self.updated_user_data.clone();
         let join_handle_update_user_data: JoinHandle<Result<(), B::Error>> = tokio::spawn(async move {
@@ -214,9 +239,11 @@ impl<S: State> ServerState<S> {
             }
         });
 
+        let store_clone = self.store.clone();
+
         let _: JoinHandle<Result<(), B::Error>> = tokio::spawn(async move {
             while let Some(state) = get_state_to_save.recv().await {
-                store.save_game(game_id, &state).await?;
+                store_clone.save_game(game_id, &state).await?;
             }
 
             join_handle_tick.abort();
@@ -227,7 +254,7 @@ impl<S: State> ServerState<S> {
             Ok(())
         });
 
-        self.games.insert(game_id, game_state);
+        self.games.write().await.insert(game_id, game_state);
 
         Ok(())
     }
@@ -238,9 +265,10 @@ impl<S: State> ServerState<S> {
         &self,
         user_id: S::UserId,
         game_id: GameId,
-    ) -> (ClientConnectionReq<S>, ClientConnectionRes<S>) {
+    ) -> (ClientConnectionReq<S>, ClientConnectionRes<S, B>) {
         let sync_state = Arc::new(Notify::new());
-        let game = self.games.get(&game_id).unwrap();
+        let games = self.games.read().await;
+        let game = games.get(&game_id).unwrap();
         (ClientConnectionReq {
             user_id: user_id.clone(),
             req_sender: game.req_sender.clone(),
