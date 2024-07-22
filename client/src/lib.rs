@@ -3,7 +3,7 @@ use std::rc::Rc;
 use seed::{prelude::*, *};
 use serde::{de::DeserializeOwned, Serialize};
 use engine_shared::{
-    utils::custom_map::CustomMap, ClientEvent, EventData, GameId, Req, Res, State, SyncData
+    utils::custom_map::CustomMap, ClientEvent, EventData, Req, Res, State, SyncData
 };
 
 pub struct ClientState<S: State> {
