@@ -1,5 +1,5 @@
-use std::{hash::Hash, marker::PhantomData, str::FromStr};
 use serde::{Deserialize, Serialize};
+use std::{hash::Hash, marker::PhantomData, str::FromStr};
 use uuid::Uuid;
 
 use super::custom_map::{CustomMap, CustomSet};
@@ -11,7 +11,9 @@ pub struct EntitySet<T: Hash> {
 
 impl<T: Hash> Default for EntitySet<T> {
     fn default() -> Self {
-        Self { entities: CustomMap::new() }
+        Self {
+            entities: CustomMap::new(),
+        }
     }
 }
 
@@ -49,7 +51,8 @@ impl<T: Hash> EntitySet<T> {
             }
         }
 
-        self.entities.retain(|entity_ref, _| !to_remove.contains(entity_ref))
+        self.entities
+            .retain(|entity_ref, _| !to_remove.contains(entity_ref))
     }
 
     pub fn for_each_in_mut<F>(&mut self, set: &mut EntityRefSet<T>, mut f: F)
@@ -68,8 +71,10 @@ impl<T: Hash> EntitySet<T> {
             }
         }
 
-        self.entities.retain(|entity_ref, _| !to_remove.contains(entity_ref));
-        set.entities.retain(|entity_ref| !to_remove.contains(entity_ref));
+        self.entities
+            .retain(|entity_ref, _| !to_remove.contains(entity_ref));
+        set.entities
+            .retain(|entity_ref| !to_remove.contains(entity_ref));
     }
 
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = (&EntityRef<T>, &T)> + 'a
@@ -79,11 +84,18 @@ impl<T: Hash> EntitySet<T> {
         self.entities.as_slice().iter()
     }
 
-    pub fn iter_in<'a, 'b: 'a>(&'a self, set: &'b EntityRefSet<T>) -> impl Iterator<Item = (&EntityRef<T>, &T)> + 'a
+    pub fn iter_in<'a, 'b: 'a>(
+        &'a self,
+        set: &'b EntityRefSet<T>,
+    ) -> impl Iterator<Item = (&EntityRef<T>, &T)> + 'a
     where
         EntityRef<T>: Copy,
     {
-        set.entities.as_slice().iter().flat_map(move |entity_ref| self.entities.get(entity_ref).map(|entity| (entity_ref, entity)))
+        set.entities.as_slice().iter().flat_map(move |entity_ref| {
+            self.entities
+                .get(entity_ref)
+                .map(|entity| (entity_ref, entity))
+        })
     }
 }
 
@@ -104,7 +116,9 @@ pub struct EntityRefSet<T: Hash> {
 
 impl<T: Hash> Default for EntityRefSet<T> {
     fn default() -> Self {
-        Self { entities: CustomSet::new() }
+        Self {
+            entities: CustomSet::new(),
+        }
     }
 }
 
@@ -159,7 +173,10 @@ impl<T> FromStr for EntityRef<T> {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(EntityRef(Uuid::from_str(s).map_err(|_| ())?, PhantomData::default()))
+        Ok(EntityRef(
+            Uuid::from_str(s).map_err(|_| ())?,
+            PhantomData::default(),
+        ))
     }
 }
 

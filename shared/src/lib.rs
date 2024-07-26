@@ -1,15 +1,13 @@
 pub mod utils;
 
-use rand::{
-    Rng, SeedableRng,
-};
+use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use utils::custom_map::CustomMap;
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::time::Duration;
-use std::fmt::Debug;
+use utils::custom_map::CustomMap;
 
 pub type Seed = [u8; 32];
 pub type Checksum = [u8; 32];
@@ -52,7 +50,12 @@ pub trait State: Clone + Debug + Send + Sized + Default + 'static {
 
     const DURATION_PER_TICK: Duration;
 
-    fn update(&mut self, rng: &mut impl Rng, event: Event<Self>, user_data: &CustomMap<Self::UserId, Self::UserData>);
+    fn update(
+        &mut self,
+        rng: &mut impl Rng,
+        event: Event<Self>,
+        user_data: &CustomMap<Self::UserId, Self::UserData>,
+    );
     fn has_winner(&self) -> Option<Self::UserId>;
 }
 
@@ -62,15 +65,22 @@ pub enum Event<S: State> {
     ClientEvent(S::ClientEvent, S::UserId),
 }
 
-pub trait ServerEvent<S: State>: Clone + Serialize + DeserializeOwned + Send + Debug + Send + 'static {
+pub trait ServerEvent<S: State>:
+    Clone + Serialize + DeserializeOwned + Send + Debug + Send + 'static
+{
     fn tick() -> Self;
 }
 
-pub trait ClientEvent: Clone + Serialize + DeserializeOwned + Send + Debug + Send + 'static {
+pub trait ClientEvent:
+    Clone + Serialize + DeserializeOwned + Send + Debug + Send + 'static
+{
     fn init() -> Self;
 }
 
-pub trait UserId: Clone + Serialize + DeserializeOwned + Send + Debug + PartialEq + Eq + Hash + Send + 'static {}
+pub trait UserId:
+    Clone + Serialize + DeserializeOwned + Send + Debug + PartialEq + Eq + Hash + Send + 'static
+{
+}
 
 pub trait UserData: Clone + Serialize + DeserializeOwned + Send + Debug + Send + 'static {}
 
@@ -86,10 +96,9 @@ pub struct StateWrapper<S: State> {
 }
 
 impl<S: State> StateWrapper<S> {
-
     pub fn checksum(&self) -> Checksum
     where
-        Self: Serialize
+        Self: Serialize,
     {
         let serialized = rmp_serde::to_vec(self).unwrap();
         let mut hasher = Sha256::new();
@@ -99,9 +108,16 @@ impl<S: State> StateWrapper<S> {
         slice.try_into().unwrap()
     }
 
-    pub fn update_checked(&mut self, EventData { event, seed, state_checksum }: EventData<S>) -> Result<(), Error>
+    pub fn update_checked(
+        &mut self,
+        EventData {
+            event,
+            seed,
+            state_checksum,
+        }: EventData<S>,
+    ) -> Result<(), Error>
     where
-        Self: Serialize
+        Self: Serialize,
     {
         let checksum = self.checksum();
         if checksum != state_checksum {

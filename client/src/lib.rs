@@ -1,10 +1,10 @@
 use std::rc::Rc;
 
+use engine_shared::{
+    utils::custom_map::CustomMap, ClientEvent, EventData, Req, Res, State, SyncData,
+};
 use seed::{prelude::*, *};
 use serde::{de::DeserializeOwned, Serialize};
-use engine_shared::{
-    utils::custom_map::CustomMap, ClientEvent, EventData, Req, Res, State, SyncData
-};
 
 pub struct ClientState<S: State> {
     web_socket: WebSocket,
@@ -13,8 +13,11 @@ pub struct ClientState<S: State> {
     ws_path: String,
 }
 
-pub trait Msg<S: State>: 'static + From<EventWrapper<S>>  {
-    fn send_event(event: S::ClientEvent) -> Self where Self: Sized {
+pub trait Msg<S: State>: 'static + From<EventWrapper<S>> {
+    fn send_event(event: S::ClientEvent) -> Self
+    where
+        Self: Sized,
+    {
         Self::from(EventWrapper::SendGameEvent(event))
     }
 }
@@ -22,7 +25,7 @@ pub trait Msg<S: State>: 'static + From<EventWrapper<S>>  {
 impl<S: State> ClientState<S> {
     pub fn init<M: Msg<S>>(orders: &mut impl Orders<M>, ws_path: String) -> Self
     where
-        S: DeserializeOwned
+        S: DeserializeOwned,
     {
         let web_socket = Self::create_websocket(orders, &ws_path);
 
@@ -30,7 +33,7 @@ impl<S: State> ClientState<S> {
             web_socket,
             web_socket_reconnector: None,
             state: None,
-            ws_path
+            ws_path,
         }
     }
 
@@ -43,14 +46,14 @@ impl<S: State> ClientState<S> {
     }
 
     pub fn get_user_data(&self, user_id: &S::UserId) -> Option<&S::UserData> {
-        self.state.as_ref().and_then(|data| {
-            data.state.users.get(user_id)
-        })
+        self.state
+            .as_ref()
+            .and_then(|data| data.state.users.get(user_id))
     }
 
     pub fn update<M: Msg<S>>(&mut self, msg: EventWrapper<S>, orders: &mut impl Orders<M>)
     where
-        S: DeserializeOwned + Serialize
+        S: DeserializeOwned + Serialize,
     {
         let web_socket = &self.web_socket;
         let send = |event| {
@@ -62,9 +65,9 @@ impl<S: State> ClientState<S> {
             let serialized = rmp_serde::to_vec(&Req::<S>::Sync).unwrap();
             web_socket.send_bytes(&serialized).unwrap();
         };
-    
+
         match msg {
-            EventWrapper::WebSocketOpened => {                
+            EventWrapper::WebSocketOpened => {
                 self.web_socket_reconnector = None;
                 log!("WebSocket connection is open now");
 
@@ -73,8 +76,7 @@ impl<S: State> ClientState<S> {
             }
             EventWrapper::CloseWebSocket => {
                 self.web_socket_reconnector = None;
-                self
-                    .web_socket
+                self.web_socket
                     .close(None, Some("user clicked close button"))
                     .unwrap();
             }
@@ -83,27 +85,29 @@ impl<S: State> ClientState<S> {
                     "WebSocket connection was closed, reason:",
                     close_event.reason()
                 );
-    
+
                 // Chrome doesn't invoke `on_error` when the connection is lost.
-                if (!close_event.was_clean() || close_event.code() == 4000) && self.web_socket_reconnector.is_none() {
-                    self.web_socket_reconnector = Some(
-                        orders.stream_with_handle(streams::backoff(None, EventWrapper::<S>::ReconnectWebSocket)),
-                    );
+                if (!close_event.was_clean() || close_event.code() == 4000)
+                    && self.web_socket_reconnector.is_none()
+                {
+                    self.web_socket_reconnector = Some(orders.stream_with_handle(
+                        streams::backoff(None, EventWrapper::<S>::ReconnectWebSocket),
+                    ));
                 }
             }
             EventWrapper::WebSocketFailed => {
                 log!("WebSocket failed");
                 if self.web_socket_reconnector.is_none() {
-                    self.web_socket_reconnector = Some(
-                        orders.stream_with_handle(streams::backoff(None, EventWrapper::<S>::ReconnectWebSocket)),
-                    );
+                    self.web_socket_reconnector = Some(orders.stream_with_handle(
+                        streams::backoff(None, EventWrapper::<S>::ReconnectWebSocket),
+                    ));
                 }
             }
             EventWrapper::ReconnectWebSocket(retries) => {
                 log!("Reconnect attempt:", retries);
                 self.web_socket = Self::create_websocket(orders, &self.ws_path);
             }
-            EventWrapper::SendGameEvent(event) => send(event),    
+            EventWrapper::SendGameEvent(event) => send(event),
             EventWrapper::InitGameState(sync_data) => {
                 self.state = Some(sync_data);
             }
@@ -120,13 +124,13 @@ impl<S: State> ClientState<S> {
                 if let Some(SyncData { state, .. }) = &mut self.state {
                     state.users = map;
                 }
-            },
+            }
         }
     }
 
     fn create_websocket<M: Msg<S>>(orders: &impl Orders<M>, ws_path: &str) -> WebSocket
     where
-        S: DeserializeOwned
+        S: DeserializeOwned,
     {
         let msg_sender = orders.msg_sender();
 
@@ -141,7 +145,7 @@ impl<S: State> ClientState<S> {
 
     fn decode_message<M: Msg<S>>(message: WebSocketMessage, msg_sender: Rc<dyn Fn(Option<M>)>)
     where
-        S: DeserializeOwned
+        S: DeserializeOwned,
     {
         if message.contains_text() {
             unreachable!()

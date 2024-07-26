@@ -1,10 +1,15 @@
+use engine_shared::{
+    utils::custom_map::CustomMap, Event, EventData, GameId, Req, Res, Seed, State, StateWrapper,
+    SyncData,
+};
 use rand::{rngs::SmallRng, Rng, SeedableRng};
-use engine_shared::{utils::custom_map::CustomMap, Event, EventData, GameId, Req, Res, Seed, State, StateWrapper, SyncData};
+use serde::Serialize;
 use std::{collections::HashMap, sync::Arc};
 use tokio::{
-    sync::{broadcast, mpsc, Notify, RwLock}, task::JoinHandle, time
+    sync::{broadcast, mpsc, Notify, RwLock},
+    task::JoinHandle,
+    time,
 };
-use serde::Serialize;
 
 pub type GameVersion = i64;
 
@@ -30,7 +35,6 @@ impl<S: State, B: BackendStore<S>> Clone for ServerState<S, B> {
             store: self.store.clone(),
         }
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -43,7 +47,11 @@ pub struct ClientConnectionReq<S: State> {
 impl<S: State> ClientConnectionReq<S> {
     pub fn request(&self, req: Req<S>) {
         match req {
-            Req::Event(event) => { self.req_sender.send(Event::ClientEvent(event, self.user_id.clone())).ok(); },
+            Req::Event(event) => {
+                self.req_sender
+                    .send(Event::ClientEvent(event, self.user_id.clone()))
+                    .ok();
+            }
             Req::Sync => self.sync_state.notify_one(),
         }
     }
@@ -107,8 +115,6 @@ impl<S: State, B: BackendStore<S>> ClientConnectionRes<S, B> {
     }
 }
 
-
-
 #[async_trait::async_trait]
 pub trait BackendStore<S: State>: Send + Sync + 'static {
     type Error: std::error::Error;
@@ -120,7 +126,6 @@ pub trait BackendStore<S: State>: Send + Sync + 'static {
 }
 
 impl<S: State, B: BackendStore<S>> ServerState<S, B> {
-
     pub fn new(store: B) -> Self {
         ServerState {
             games: Arc::new(RwLock::new(HashMap::new())),
@@ -175,7 +180,9 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
                 interval.tick().await;
 
                 req_sender_clone
-                    .send(Event::ServerEvent(<S::ServerEvent as engine_shared::ServerEvent<S>>::tick()))
+                    .send(Event::ServerEvent(
+                        <S::ServerEvent as engine_shared::ServerEvent<S>>::tick(),
+                    ))
                     .ok();
             }
         });
@@ -184,16 +191,18 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
         let store_clone = self.store.clone();
         let update_user_data = self.update_user_data.clone();
         let updated_user_data = self.updated_user_data.clone();
-        let join_handle_update_user_data: JoinHandle<Result<(), B::Error>> = tokio::spawn(async move {
-            let update_user_data_clone = update_user_data.clone();
-            let updated_user_data_clone = updated_user_data.clone();
+        let join_handle_update_user_data: JoinHandle<Result<(), B::Error>> =
+            tokio::spawn(async move {
+                let update_user_data_clone = update_user_data.clone();
+                let updated_user_data_clone = updated_user_data.clone();
 
-            loop {
-                update_user_data_clone.notified().await;
-                game_state_clone.state.write().await.users = store_clone.load_user_data().await?;
-                updated_user_data_clone.notify_waiters();
-            }
-        });
+                loop {
+                    update_user_data_clone.notified().await;
+                    game_state_clone.state.write().await.users =
+                        store_clone.load_user_data().await?;
+                    updated_user_data_clone.notify_waiters();
+                }
+            });
 
         let game_state_clone = game_state.clone();
         tokio::spawn(async move {
@@ -205,10 +214,8 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
 
             let mut rng = SmallRng::from_entropy();
 
-            while let Some(event) = req_receiver.recv().await
-            {
+            while let Some(event) = req_receiver.recv().await {
                 tracing::debug!("handling event: {event:?}");
-
 
                 let mut state_wrapper = game.write().await;
                 let state_checksum = state_wrapper.checksum();
@@ -225,17 +232,19 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
                 match res {
                     Ok(()) => {
                         set_state_to_save.try_send(state_wrapper.state.clone()).ok();
-                    },
+                    }
                     Err(engine_shared::Error::WorldClosed) => {
-                        set_state_to_save.blocking_send(state_wrapper.state.clone()).ok();
+                        set_state_to_save
+                            .blocking_send(state_wrapper.state.clone())
+                            .ok();
                         break;
-                    },
-                    Err(_) => panic!()
+                    }
+                    Err(_) => panic!(),
                 }
 
                 tracing::debug!("updated state: {state_wrapper:?}");
-                
-                res_sender.send(Res::Event(event.clone())).ok(); 
+
+                res_sender.send(Res::Event(event.clone())).ok();
             }
         });
 
@@ -259,8 +268,6 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
         Ok(())
     }
 
-
-   
     pub async fn new_connection(
         &self,
         user_id: S::UserId,
@@ -269,23 +276,24 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
         let sync_state = Arc::new(Notify::new());
         let games = self.games.read().await;
         let game = games.get(&game_id).unwrap();
-        (ClientConnectionReq {
-            user_id: user_id.clone(),
-            req_sender: game.req_sender.clone(),
-            sync_state: sync_state.clone(),
-        }, ClientConnectionRes {
-            user_id,
-            state: self.clone(),
-            res_receiver: game.res_sender.subscribe(),
-            sync_state,
-            updated_user_data: self.updated_user_data.clone(),
-            game_id,
-        })
+        (
+            ClientConnectionReq {
+                user_id: user_id.clone(),
+                req_sender: game.req_sender.clone(),
+                sync_state: sync_state.clone(),
+            },
+            ClientConnectionRes {
+                user_id,
+                state: self.clone(),
+                res_receiver: game.res_sender.subscribe(),
+                sync_state,
+                updated_user_data: self.updated_user_data.clone(),
+                game_id,
+            },
+        )
     }
 
-    pub async fn new_server_connection(
-        &self,
-    ) -> ServerConnectionReq<S> {
+    pub async fn new_server_connection(&self) -> ServerConnectionReq<S> {
         ServerConnectionReq {
             update_user_data: self.update_user_data.clone(),
             _phantom: std::marker::PhantomData,

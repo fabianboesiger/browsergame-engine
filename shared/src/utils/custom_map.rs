@@ -1,5 +1,5 @@
-use std::ops::{Deref, DerefMut};
 use std::hash::{Hash, Hasher};
+use std::ops::{Deref, DerefMut};
 
 use fxhash::{FxBuildHasher, FxHasher};
 use indexmap::{IndexMap, IndexSet};
@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CustomMap<K: Eq + Hash, V>(IndexMap<K, V, FxBuildHasher>);
-
 
 impl<K: Eq + Hash, V> Default for CustomMap<K, V> {
     fn default() -> Self {
@@ -37,12 +36,15 @@ impl<K: Eq + Hash, V> DerefMut for CustomMap<K, V> {
 
 impl<K: Eq + Hash, V: Hash> Hash for CustomMap<K, V> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        let hash = self.iter().map(|(k, v)| {
-            let mut hasher = FxHasher::default();
-            k.hash(&mut hasher);
-            v.hash(&mut hasher);
-            hasher.finish()
-        }).fold(0, u64::wrapping_add);
+        let hash = self
+            .iter()
+            .map(|(k, v)| {
+                let mut hasher = FxHasher::default();
+                k.hash(&mut hasher);
+                v.hash(&mut hasher);
+                hasher.finish()
+            })
+            .fold(0, u64::wrapping_add);
 
         state.write_u64(hash);
     }
@@ -78,7 +80,6 @@ impl<K: Eq + Hash, V: Hash> FromIterator<(K, V)> for CustomMap<K, V> {
     }
 }
 
-
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct CustomSet<T: Eq + Hash>(IndexSet<T, FxBuildHasher>);
 
@@ -104,11 +105,14 @@ impl<T: Eq + Hash> DerefMut for CustomSet<T> {
 
 impl<T: Eq + Hash> Hash for CustomSet<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        let hash = self.iter().map(|v| {
-            let mut hasher = FxHasher::default();
-            v.hash(&mut hasher);
-            hasher.finish()
-        }).fold(0, u64::wrapping_add);
+        let hash = self
+            .iter()
+            .map(|v| {
+                let mut hasher = FxHasher::default();
+                v.hash(&mut hasher);
+                hasher.finish()
+            })
+            .fold(0, u64::wrapping_add);
 
         state.write_u64(hash);
     }

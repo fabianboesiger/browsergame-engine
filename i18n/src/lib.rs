@@ -1,4 +1,8 @@
-use std::{fmt::Display, str::FromStr, sync::{Arc, OnceLock, RwLock}};
+use std::{
+    fmt::Display,
+    str::FromStr,
+    sync::{Arc, OnceLock, RwLock},
+};
 
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -11,7 +15,7 @@ struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { 
+        Self {
             fallback_locale: Locale(Language::En, None),
             locales: SmallVec::new(),
         }
@@ -21,15 +25,26 @@ impl Default for Settings {
 static SETTINGS: OnceLock<Arc<RwLock<Settings>>> = OnceLock::new();
 
 pub fn set_fallback_locale(locale: Locale) {
-    SETTINGS.get_or_init(|| Arc::new(RwLock::new(Settings::default()))).write().unwrap().fallback_locale = locale;
+    SETTINGS
+        .get_or_init(|| Arc::new(RwLock::new(Settings::default())))
+        .write()
+        .unwrap()
+        .fallback_locale = locale;
 }
 
 pub fn set_locales(locales: &[Locale]) {
-    SETTINGS.get_or_init(|| Arc::new(RwLock::new(Settings::default()))).write().unwrap().locales = SmallVec::from_slice(locales);
+    SETTINGS
+        .get_or_init(|| Arc::new(RwLock::new(Settings::default())))
+        .write()
+        .unwrap()
+        .locales = SmallVec::from_slice(locales);
 }
 
 fn get_locales() -> SmallVec<[Locale; 8]> {
-    let settings = SETTINGS.get_or_init(|| Arc::new(RwLock::new(Settings::default()))).read().unwrap();
+    let settings = SETTINGS
+        .get_or_init(|| Arc::new(RwLock::new(Settings::default())))
+        .read()
+        .unwrap();
     let mut locales = settings.locales.clone();
     locales.push(settings.fallback_locale);
     return locales;
@@ -59,10 +74,16 @@ pub struct Locale(pub Language, pub Option<Country>);
 impl Locale {
     pub fn from_str<'a>(string: &'a str) -> Option<Locale> {
         if let Some((language, country)) = string.split_once('-') {
-            return Some(Locale(Language::from_str(language).ok()?, Some(Country::from_str(country).ok()?)));
+            return Some(Locale(
+                Language::from_str(language).ok()?,
+                Some(Country::from_str(country).ok()?),
+            ));
         }
         if let Some((language, country)) = string.split_once('_') {
-            return Some(Locale(Language::from_str(language).ok()?, Some(Country::from_str(country).ok()?)));
+            return Some(Locale(
+                Language::from_str(language).ok()?,
+                Some(Country::from_str(country).ok()?),
+            ));
         }
         Some(Locale(Language::from_str(string).ok()?, None))
     }
@@ -77,7 +98,7 @@ impl Locale {
             MatchesLanguageAndDefinedCountryIsNone,
             MatchesLanguageAndCountry,
         }
-    
+
         impl MatchRating {
             fn rate_match(Locale(language, country): Locale, Locale(user_language, user_country): Locale) -> MatchRating {
                 if language == user_language && country == user_country {
@@ -91,12 +112,12 @@ impl Locale {
                 }
             }
         }
-    
+
         let mut best_match = None;
         let mut best_rating = MatchRating::MatchesNothing;
 
         let supported_locales = get_supported_locales();
-    
+
         for &user_locale in user_preferences {
             for &locale in &supported_locales {
                 let rating = MatchRating::rate_match(locale, user_locale);
@@ -109,7 +130,7 @@ impl Locale {
                 break;
             }
         }
-    
+
         best_match
     }
     */
@@ -151,7 +172,7 @@ impl<'a> From<&'a str> for Localized {
 
 impl Display for Localized {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-       write!(f, "{}", self.0)
+        write!(f, "{}", self.0)
     }
 }
 
@@ -187,11 +208,11 @@ macro_rules! localize {
                         }
                     ),*
                 }
-                
+
                 $crate::Localized::from(format!("{:?}", self))
             }
         }
-        
+
         impl std::fmt::Display for $name {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "{}", <Self as $crate::Localizable>::localize(self.clone()).to_string())
@@ -232,7 +253,7 @@ macro_rules! localize {
                         }
                     ),*
                 }
-                
+
                 $crate::Localized::from(format!("{:?}", self))
             }
         }
@@ -242,7 +263,7 @@ macro_rules! localize {
                 el.children.push(seed::virtual_dom::Node::Text(seed::virtual_dom::Text::new(<Self as $crate::Localizable>::localize(self.clone()).to_string())));
             }
         }
-        
+
         impl std::fmt::Display for $name {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "{}", <Self as $crate::Localizable>::localize(self.clone()).to_string())
@@ -259,7 +280,13 @@ pub fn web_sys_set_locales() {
         .languages()
         .iter()
         .map(|v| v.as_string().unwrap())
-        .chain(web_sys::window().unwrap().navigator().language().into_iter())
+        .chain(
+            web_sys::window()
+                .unwrap()
+                .navigator()
+                .language()
+                .into_iter(),
+        )
         .flat_map(|s| Locale::from_str(&s))
         .collect::<Vec<Locale>>();
 
