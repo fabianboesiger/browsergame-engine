@@ -135,6 +135,17 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
         }
     }
 
+    pub async fn has_runing_games(&self) -> bool {
+        let mut has_runing_games = false;
+        for game in self.games.read().await.values() {
+            if engine_shared::State::has_winner(&game.state.read().await.state).is_none() {
+                has_runing_games = true;
+                break;
+            }
+        }
+        has_runing_games
+    }
+
     pub async fn create(&self) -> Result<(), B::Error>
     where
         S: Clone + Serialize,
