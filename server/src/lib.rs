@@ -1,5 +1,5 @@
 use engine_shared::{
-    utils::custom_map::CustomMap, Event, EventData, GameId, Req, Res, Seed, State, StateWrapper,
+    utils::custom_map::{CustomMap, CustomSet}, Event, EventData, GameId, Req, Res, Seed, State, StateWrapper,
     SyncData,
 };
 use rand::{rngs::SmallRng, Rng, SeedableRng};
@@ -135,15 +135,16 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
         }
     }
 
-    pub async fn has_runing_games(&self) -> bool {
-        let mut has_runing_games = false;
+    pub async fn has_runing_games(&self) -> CustomSet<S::UserId> {
+        let mut users = CustomSet::new();
         for game in self.games.read().await.values() {
-            if engine_shared::State::has_winner(&game.state.read().await.state).is_none() {
-                has_runing_games = true;
+            let state = &game.state.read().await.state;
+            if engine_shared::State::has_winner(state).is_none() {
+                users.extend(engine_shared::State::players(state));
                 break;
             }
         }
-        has_runing_games
+        users
     }
 
     pub async fn create(&self) -> Result<(), B::Error>
@@ -239,7 +240,6 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
                 };
 
                 let res = state_wrapper.update_checked(event.clone());
-
                 match res {
                     Ok(()) => {
                         set_state_to_save.try_send(state_wrapper.state.clone()).ok();
@@ -248,6 +248,7 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
                         set_state_to_save
                             .blocking_send(state_wrapper.state.clone())
                             .ok();
+
                         break;
                     }
                     Err(_) => panic!(),
@@ -260,7 +261,7 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
         });
 
         let store_clone = self.store.clone();
-
+        let games = self.games.clone();
         let _: JoinHandle<Result<(), B::Error>> = tokio::spawn(async move {
             while let Some(state) = get_state_to_save.recv().await {
                 store_clone.save_game(game_id, &state).await?;
@@ -268,6 +269,8 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
 
             join_handle_tick.abort();
             join_handle_update_user_data.abort();
+
+            games.write().await.remove(&game_id);
 
             tracing::info!("the world {} was closed", game_id);
 

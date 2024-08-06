@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::time::Duration;
-use utils::custom_map::CustomMap;
+use utils::custom_map::{CustomMap, CustomSet};
 
 pub type Seed = [u8; 32];
 pub type Checksum = [u8; 32];
@@ -57,6 +57,7 @@ pub trait State: Clone + Debug + Send + Sized + Default + 'static {
         user_data: &CustomMap<Self::UserId, Self::UserData>,
     );
     fn has_winner(&self) -> Option<Self::UserId>;
+    fn players(&self) -> CustomSet<Self::UserId>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
