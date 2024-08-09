@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::time::Duration;
-use utils::custom_map::{CustomMap, CustomSet};
+use utils::custom_map::CustomMap;
 
 pub type Seed = [u8; 32];
 pub type Checksum = [u8; 32];

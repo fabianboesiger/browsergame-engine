@@ -1,5 +1,5 @@
 use engine_shared::{
-    utils::custom_map::{CustomMap, CustomSet},
+    utils::custom_map::CustomMap,
     Event, EventData, GameId, Req, Res, Seed, State, StateWrapper, SyncData,
 };
 use rand::{rngs::SmallRng, Rng, SeedableRng};
