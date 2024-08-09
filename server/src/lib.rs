@@ -1,6 +1,6 @@
 use engine_shared::{
-    utils::custom_map::{CustomMap, CustomSet}, Event, EventData, GameId, Req, Res, Seed, State, StateWrapper,
-    SyncData,
+    utils::custom_map::{CustomMap, CustomSet},
+    Event, EventData, GameId, Req, Res, Seed, State, StateWrapper, SyncData,
 };
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use serde::Serialize;
@@ -135,16 +135,14 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
         }
     }
 
-    pub async fn has_runing_games(&self) -> CustomSet<S::UserId> {
-        let mut users = CustomSet::new();
+    pub async fn read_games<F>(&self, mut f: F)
+    where
+        F: FnMut(&S),
+    {
         for game in self.games.read().await.values() {
             let state = &game.state.read().await.state;
-            if engine_shared::State::has_winner(state).is_none() {
-                users.extend(engine_shared::State::players(state));
-                break;
-            }
+            f(state)
         }
-        users
     }
 
     pub async fn create(&self) -> Result<(), B::Error>

@@ -57,7 +57,6 @@ pub trait State: Clone + Debug + Send + Sized + Default + 'static {
         user_data: &CustomMap<Self::UserId, Self::UserData>,
     );
     fn has_winner(&self) -> Option<Self::UserId>;
-    fn players(&self) -> CustomSet<Self::UserId>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
