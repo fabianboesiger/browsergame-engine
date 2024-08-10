@@ -119,6 +119,10 @@ impl<S: State> StateWrapper<S> {
     where
         Self: Serialize,
     {
+        if self.state.has_winner().is_some() {
+            return Err(Error::WorldClosed);
+        }
+        
         let checksum = self.checksum();
         if checksum != state_checksum {
             return Err(Error::InvalidChecksum);
@@ -127,10 +131,6 @@ impl<S: State> StateWrapper<S> {
         let mut rng = ChaCha8Rng::from_seed(seed);
 
         self.state.update(&mut rng, event, &self.users);
-
-        if self.state.has_winner().is_some() {
-            return Err(Error::WorldClosed);
-        }
 
         Ok(())
     }

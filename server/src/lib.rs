@@ -215,7 +215,7 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
             });
 
         let game_state_clone = game_state.clone();
-        tokio::spawn(async move {
+        let join_handle_events = tokio::spawn(async move {
             let ServerStateImpl {
                 state: game,
                 res_sender,
@@ -243,11 +243,7 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
                         set_state_to_save.try_send(state_wrapper.state.clone()).ok();
                     }
                     Err(engine_shared::Error::WorldClosed) => {
-                        set_state_to_save
-                            .blocking_send(state_wrapper.state.clone())
-                            .ok();
-
-                        break;
+                        set_state_to_save.try_send(state_wrapper.state.clone()).ok();
                     }
                     Err(_) => panic!(),
                 }
@@ -263,14 +259,17 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
         let _: JoinHandle<Result<(), B::Error>> = tokio::spawn(async move {
             while let Some(state) = get_state_to_save.recv().await {
                 store_clone.save_game(game_id, &state).await?;
+                if let Some(winner) = state.has_winner() {
+                    tracing::info!("the world {} was closed, winner is {:?}", game_id, winner);
+                    break;
+                }
             }
 
             join_handle_tick.abort();
             join_handle_update_user_data.abort();
+            join_handle_events.abort();
 
             games.write().await.remove(&game_id);
-
-            tracing::info!("the world {} was closed", game_id);
 
             Ok(())
         });
