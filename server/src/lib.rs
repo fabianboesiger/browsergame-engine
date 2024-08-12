@@ -92,35 +92,35 @@ pub struct ClientConnectionRes<S: State, B: BackendStore<S>> {
 }
 
 impl<S: State, B: BackendStore<S>> ClientConnectionRes<S, B> {
-    pub async fn poll(&mut self) -> Option<Res<S>> {
+    pub async fn poll(&mut self) -> Result<Option<Res<S>>, Error> {
         let games = self.state.games.read().await;
-        let state = &games.get(&self.game_id).unwrap().state;
+        let state = &games.get(&self.game_id).ok_or(Error::GameNotFound)?.state;
 
         tokio::select! {
             _ = self.sync_state.notified() => {
                 let state_wrapper = state.read().await;
-                Some(Res::Sync(SyncData {
+                Ok(Some(Res::Sync(SyncData {
                     user_id: self.user_id.clone(),
                     state: state_wrapper.clone(),
-                }))
+                })))
             }
             _ = self.updated_user_data.notified() => {
                 let state_wrapper = state.read().await;
-                Some(Res::UserUpdate(state_wrapper.users.clone()))
+                Ok(Some(Res::UserUpdate(state_wrapper.users.clone())))
             }
             res = self.res_receiver.recv() => {
                 match res {
-                    Ok(res) => Some(res),
+                    Ok(res) => Ok(Some(res)),
                     Err(broadcast::error::RecvError::Lagged(_)) => {
                         // If receiver lagged, retransmit the whole state.
                         let state_wrapper = state.read().await;
-                        Some(Res::Sync(SyncData {
+                        Ok(Some(Res::Sync(SyncData {
                             user_id: self.user_id.clone(),
                             state: state_wrapper.clone(),
-                        }))
+                        })))
                     }
                     Err(broadcast::error::RecvError::Closed) => {
-                        None
+                        Ok(None)
                     }
                 }
             }
