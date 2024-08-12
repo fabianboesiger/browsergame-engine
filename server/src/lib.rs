@@ -13,6 +13,19 @@ use tokio::{
 
 pub type GameVersion = i64;
 
+#[derive(Debug, Clone, Copy)]
+pub enum Error {
+    GameNotFound
+}
+
+impl std::error::Error for Error {}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "game not found")
+    }
+}
+
 struct ServerStateImpl<S: State> {
     state: RwLock<StateWrapper<S>>,
     res_sender: broadcast::Sender<Res<S>>,
@@ -283,11 +296,11 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
         &self,
         user_id: S::UserId,
         game_id: GameId,
-    ) -> (ClientConnectionReq<S>, ClientConnectionRes<S, B>) {
+    ) -> Result<(ClientConnectionReq<S>, ClientConnectionRes<S, B>), Error> {
         let sync_state = Arc::new(Notify::new());
         let games = self.games.read().await;
-        let game = games.get(&game_id).unwrap();
-        (
+        let game = games.get(&game_id).ok_or(Error::GameNotFound)?;
+        Ok((
             ClientConnectionReq {
                 user_id: user_id.clone(),
                 req_sender: game.req_sender.clone(),
@@ -301,7 +314,7 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
                 updated_user_data: self.updated_user_data.clone(),
                 game_id,
             },
-        )
+        ))
     }
 
     pub async fn new_server_connection(&self) -> ServerConnectionReq<S> {
