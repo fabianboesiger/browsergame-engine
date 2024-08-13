@@ -1,6 +1,6 @@
 use engine_shared::{
-    utils::custom_map::CustomMap,
-    Event, EventData, GameId, Req, Res, Seed, State, StateWrapper, SyncData,
+    utils::custom_map::CustomMap, Event, EventData, GameId, Req, Res, Seed, State, StateWrapper,
+    SyncData,
 };
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use serde::Serialize;
@@ -15,7 +15,7 @@ pub type GameVersion = i64;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Error {
-    GameNotFound
+    GameNotFound,
 }
 
 impl std::error::Error for Error {}

@@ -122,7 +122,7 @@ impl<S: State> StateWrapper<S> {
         if self.state.has_winner().is_some() {
             return Err(Error::WorldClosed);
         }
-        
+
         let checksum = self.checksum();
         if checksum != state_checksum {
             return Err(Error::InvalidChecksum);
