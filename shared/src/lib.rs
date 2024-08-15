@@ -84,6 +84,7 @@ pub trait UserId:
 
 pub trait UserData: Clone + Serialize + DeserializeOwned + Send + Debug + Send + 'static {}
 
+#[derive(Debug, Clone)]
 pub enum Error {
     InvalidChecksum,
     WorldClosed,

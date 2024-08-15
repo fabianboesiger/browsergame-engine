@@ -4,7 +4,7 @@ use engine_shared::{
 };
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use serde::Serialize;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::{
     sync::{broadcast, mpsc, Notify, RwLock},
     task::JoinHandle,
@@ -176,8 +176,6 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
         RwLock<StateWrapper<S>>: Sync,
         B::Error: Send,
     {
-        let (set_state_to_save, mut get_state_to_save) = mpsc::channel::<S>(1);
-
         let (req_sender, mut req_receiver) = mpsc::unbounded_channel::<Event<S>>();
         let (res_sender, _res_receiver) = broadcast::channel::<Res<S>>(128);
 
@@ -238,40 +236,50 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
             let mut rng = SmallRng::from_entropy();
 
             while let Some(event) = req_receiver.recv().await {
-                tracing::debug!("handling event: {event:?}");
+                {
+                    tracing::debug!("handling event: {event:?}");
 
-                let mut state_wrapper = game.write().await;
-                let state_checksum = state_wrapper.checksum();
-                let seed: Seed = rng.gen();
-
-                let event = EventData {
-                    event,
-                    seed,
-                    state_checksum,
-                };
-
-                let res = state_wrapper.update_checked(event.clone());
-                match res {
-                    Ok(()) => {
-                        set_state_to_save.try_send(state_wrapper.state.clone()).ok();
+                    let mut state_wrapper = game.write().await;
+                    let state_checksum = state_wrapper.checksum();
+                    let seed: Seed = rng.gen();
+    
+                    let event = EventData {
+                        event,
+                        seed,
+                        state_checksum,
+                    };
+                    
+                    let res = state_wrapper.update_checked(event.clone());
+                    tracing::debug!("updated state: {state_wrapper:?}");
+                    
+                    tracing::info!("updated state, result is {:?}", res);
+                    match res {
+                        Ok(()) => {
+                        }
+                        Err(engine_shared::Error::WorldClosed) => {
+                        }
+                        Err(_) => panic!(),
                     }
-                    Err(engine_shared::Error::WorldClosed) => {
-                        set_state_to_save.try_send(state_wrapper.state.clone()).ok();
-                    }
-                    Err(_) => panic!(),
+    
+    
+                    res_sender.send(Res::Event(event.clone())).ok();
                 }
-
-                tracing::debug!("updated state: {state_wrapper:?}");
-
-                res_sender.send(Res::Event(event.clone())).ok();
             }
         });
 
+        
         let store_clone = self.store.clone();
         let games = self.games.clone();
-        let _: JoinHandle<Result<(), B::Error>> = tokio::spawn(async move {
-            while let Some(state) = get_state_to_save.recv().await {
-                store_clone.save_game(game_id, &state).await?;
+        let game_state_clone = game_state.clone();
+
+        tokio::spawn(async move {
+            let mut interval = time::interval(Duration::from_secs(1));
+
+            loop {
+                interval.tick().await;
+
+                let state = game_state_clone.state.read().await.state.clone();
+                store_clone.save_game(game_id, &state).await.expect("failed to save game");
                 if let Some(winner) = state.has_winner() {
                     tracing::info!("the world {} was closed, winner is {:?}", game_id, winner);
                     break;
@@ -283,9 +291,9 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
             join_handle_events.abort();
 
             games.write().await.remove(&game_id);
-
-            Ok(())
         });
+        
+        
 
         self.games.write().await.insert(game_id, game_state);
 
