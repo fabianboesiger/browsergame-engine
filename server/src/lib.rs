@@ -252,7 +252,6 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
                     let res = state_wrapper.update_checked(event.clone());
                     tracing::debug!("updated state: {state_wrapper:?}");
                     
-                    tracing::info!("updated state, result is {:?}", res);
                     match res {
                         Ok(()) => {
                         }
@@ -274,15 +273,25 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
 
         tokio::spawn(async move {
             let mut interval = time::interval(Duration::from_secs(1));
+            let mut retries = 0;
 
             loop {
                 interval.tick().await;
 
                 let state = game_state_clone.state.read().await.state.clone();
-                store_clone.save_game(game_id, &state).await.expect("failed to save game");
-                if let Some(winner) = state.has_winner() {
-                    tracing::info!("the world {} was closed, winner is {:?}", game_id, winner);
-                    break;
+                if let Err(err) = store_clone.save_game(game_id, &state).await {
+                    retries += 1;
+                    tracing::error!("failed to save game, retry number {}: {:?}", retries, err);
+                    if retries >= 5 {
+                        tracing::error!("failed to save game after {} retries, closing world", retries);
+                        break;
+                    }
+                } else {
+                    retries = 0;
+                    if let Some(winner) = state.has_winner() {
+                        tracing::info!("the world {} was closed, winner is {:?}", game_id, winner);
+                        break;
+                    }
                 }
             }
 
