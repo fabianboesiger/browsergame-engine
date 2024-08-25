@@ -242,31 +242,27 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
                     let mut state_wrapper = game.write().await;
                     let state_checksum = state_wrapper.checksum();
                     let seed: Seed = rng.gen();
-    
+
                     let event = EventData {
                         event,
                         seed,
                         state_checksum,
                     };
-                    
+
                     let res = state_wrapper.update_checked(event.clone());
                     tracing::debug!("updated state: {state_wrapper:?}");
-                    
+
                     match res {
-                        Ok(()) => {
-                        }
-                        Err(engine_shared::Error::WorldClosed) => {
-                        }
+                        Ok(()) => {}
+                        Err(engine_shared::Error::WorldClosed) => {}
                         Err(_) => panic!(),
                     }
-    
-    
+
                     res_sender.send(Res::Event(event.clone())).ok();
                 }
             }
         });
 
-        
         let store_clone = self.store.clone();
         let games = self.games.clone();
         let game_state_clone = game_state.clone();
@@ -283,7 +279,10 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
                     retries += 1;
                     tracing::error!("failed to save game, retry number {}: {:?}", retries, err);
                     if retries >= 5 {
-                        tracing::error!("failed to save game after {} retries, closing world", retries);
+                        tracing::error!(
+                            "failed to save game after {} retries, closing world",
+                            retries
+                        );
                         break;
                     }
                 } else {
@@ -301,8 +300,6 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
 
             games.write().await.remove(&game_id);
         });
-        
-        
 
         self.games.write().await.insert(game_id, game_state);
 
