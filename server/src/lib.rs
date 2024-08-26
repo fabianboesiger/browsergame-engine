@@ -170,7 +170,7 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
         Ok(())
     }
 
-    pub async fn load(&self, game_id: GameId) -> Result<(), B::Error>
+    pub async fn load(&self, game_id: GameId) -> Result<Arc<Notify>, B::Error>
     where
         S: Clone + Serialize,
         RwLock<StateWrapper<S>>: Sync,
@@ -178,6 +178,7 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
     {
         let (req_sender, mut req_receiver) = mpsc::unbounded_channel::<Event<S>>();
         let (res_sender, _res_receiver) = broadcast::channel::<Res<S>>(128);
+        let game_finished = Arc::new(Notify::new());
 
         let req_sender_clone = req_sender.clone();
 
@@ -266,6 +267,7 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
         let store_clone = self.store.clone();
         let games = self.games.clone();
         let game_state_clone = game_state.clone();
+        let game_finished_clone = game_finished.clone();
 
         tokio::spawn(async move {
             let mut interval = time::interval(Duration::from_secs(1));
@@ -299,11 +301,14 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
             join_handle_events.abort();
 
             games.write().await.remove(&game_id);
+
+            game_finished_clone.notify_waiters();
+
         });
 
         self.games.write().await.insert(game_id, game_state);
 
-        Ok(())
+        Ok(game_finished)
     }
 
     pub async fn new_connection(
