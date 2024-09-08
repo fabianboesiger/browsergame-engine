@@ -303,7 +303,6 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
             games.write().await.remove(&game_id);
 
             game_finished_clone.notify_waiters();
-
         });
 
         self.games.write().await.insert(game_id, game_state);
