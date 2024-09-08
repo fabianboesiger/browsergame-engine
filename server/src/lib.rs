@@ -186,7 +186,7 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
         let user_data = self.store.load_user_data().await?;
         let state = RwLock::new(StateWrapper {
             state,
-            users: CustomMap::from(user_data),
+            users: user_data,
         });
 
         let game_state = Arc::new(ServerStateImpl {

@@ -47,7 +47,7 @@ fn get_locales() -> SmallVec<[Locale; 8]> {
         .unwrap();
     let mut locales = settings.locales.clone();
     locales.push(settings.fallback_locale);
-    return locales;
+    locales
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Display, EnumString, PartialEq, Eq)]
@@ -72,7 +72,7 @@ pub enum Country {
 pub struct Locale(pub Language, pub Option<Country>);
 
 impl Locale {
-    pub fn from_str<'a>(string: &'a str) -> Option<Locale> {
+    pub fn from_str(string: &str) -> Option<Locale> {
         if let Some((language, country)) = string.split_once('-') {
             return Some(Locale(
                 Language::from_str(language).ok()?,
@@ -284,8 +284,7 @@ pub fn web_sys_set_locales() {
             web_sys::window()
                 .unwrap()
                 .navigator()
-                .language()
-                .into_iter(),
+                .language(),
         )
         .flat_map(|s| Locale::from_str(&s))
         .collect::<Vec<Locale>>();
