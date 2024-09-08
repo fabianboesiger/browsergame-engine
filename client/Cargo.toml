@@ -1,7 +1,7 @@
 [package]
 version = "0.1.0"
 name = "engine-client"
-authors = ["Fabian Bösiger <fabian.boesiger@schindler.com>"]
+authors = ["Fabian Bösiger <boesiger.fabian@outlook.com>"]
 description = "App Description"
 categories = ["category"]
 license = "MIT"
