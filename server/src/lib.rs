@@ -289,8 +289,8 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
                     }
                 } else {
                     retries = 0;
-                    if let Some(winner) = state.has_winner() {
-                        tracing::info!("the world {} was closed, winner is {:?}", game_id, winner);
+                    if state.closed() {
+                        tracing::info!("the world {} was closed", game_id);
                         break;
                     }
                 }

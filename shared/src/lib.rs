@@ -56,7 +56,7 @@ pub trait State: Clone + Debug + Send + Sized + Default + 'static {
         event: Event<Self>,
         user_data: &CustomMap<Self::UserId, Self::UserData>,
     );
-    fn has_winner(&self) -> Option<Self::UserId>;
+    fn closed(&self) -> bool;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,7 +120,7 @@ impl<S: State> StateWrapper<S> {
     where
         Self: Serialize,
     {
-        if self.state.has_winner().is_some() {
+        if self.state.closed() {
             return Err(Error::WorldClosed);
         }
 
