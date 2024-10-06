@@ -91,7 +91,7 @@ impl<S: State> ClientState<S> {
                     && self.web_socket_reconnector.is_none()
                 {
                     self.web_socket_reconnector = Some(orders.stream_with_handle(
-                        streams::backoff(None, EventWrapper::<S>::ReconnectWebSocket),
+                        streams::backoff(None, |retries| M::from(EventWrapper::<S>::ReconnectWebSocket(retries))),
                     ));
                 }
             }
@@ -99,7 +99,7 @@ impl<S: State> ClientState<S> {
                 log!("WebSocket failed");
                 if self.web_socket_reconnector.is_none() {
                     self.web_socket_reconnector = Some(orders.stream_with_handle(
-                        streams::backoff(None, EventWrapper::<S>::ReconnectWebSocket),
+                        streams::backoff(None, |retries| M::from(EventWrapper::<S>::ReconnectWebSocket(retries))),
                     ));
                 }
             }
@@ -140,7 +140,7 @@ impl<S: State> ClientState<S> {
             .on_close(|evt| M::from(EventWrapper::<S>::WebSocketClosed(evt)))
             .on_error(|| M::from(EventWrapper::<S>::WebSocketFailed))
             .build_and_open()
-            .unwrap()
+            .expect("couldn't build WebSocket")
     }
 
     fn decode_message<M: Msg<S>>(message: WebSocketMessage, msg_sender: Rc<dyn Fn(Option<M>)>)
