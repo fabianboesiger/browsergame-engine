@@ -132,7 +132,7 @@ impl<S: State, B: BackendStore<S>> ClientConnectionRes<S, B> {
 pub trait BackendStore<S: State>: Send + Sync + 'static {
     type Error: std::error::Error;
 
-    async fn create_game(&self) -> Result<GameId, Self::Error>;
+    async fn create_game(&self, settings: S::Settings) -> Result<GameId, Self::Error>;
     async fn load_game(&self, game_id: GameId) -> Result<S, Self::Error>;
     async fn save_game(&self, game_id: GameId, state: &S) -> Result<(), Self::Error>;
     async fn load_user_data(&self) -> Result<CustomMap<S::UserId, S::UserData>, Self::Error>;
@@ -158,13 +158,13 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
         }
     }
 
-    pub async fn create(&self) -> Result<(), B::Error>
+    pub async fn create(&self, settings: S::Settings) -> Result<(), B::Error>
     where
         S: Clone + Serialize,
         RwLock<StateWrapper<S>>: Sync,
         B::Error: Send,
     {
-        let game_id = self.store.create_game().await?;
+        let game_id = self.store.create_game(settings).await?;
         self.load(game_id).await?;
 
         Ok(())

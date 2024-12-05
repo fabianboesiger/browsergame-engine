@@ -42,14 +42,16 @@ pub struct SyncData<S: State> {
     pub state: StateWrapper<S>,
 }
 
-pub trait State: Clone + Debug + Send + Sized + Default + 'static {
+pub trait State: Clone + Debug + Send + Sized + 'static {
     type ServerEvent: ServerEvent<Self>;
     type ClientEvent: ClientEvent;
     type UserId: UserId;
     type UserData: UserData;
+    type Settings: Settings;
 
     const DURATION_PER_TICK: Duration;
 
+    fn settings(&self) -> Self::Settings;
     fn update(
         &mut self,
         rng: &mut impl Rng,
@@ -57,6 +59,10 @@ pub trait State: Clone + Debug + Send + Sized + Default + 'static {
         user_data: &CustomMap<Self::UserId, Self::UserData>,
     );
     fn closed(&self) -> bool;
+}
+
+pub trait Settings {
+    fn is_ranked(&self) -> bool;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
