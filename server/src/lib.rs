@@ -78,7 +78,7 @@ pub struct ServerConnectionReq<S: State> {
 
 impl<S: State> ServerConnectionReq<S> {
     pub fn updated_user_data(&self) {
-        self.update_user_data.notify_one();
+        self.update_user_data.notify_waiters();
     }
 }
 
@@ -223,6 +223,7 @@ impl<S: State, B: BackendStore<S>> ServerState<S, B> {
                     game_state_clone.state.write().await.users =
                         store_clone.load_user_data().await?;
                     updated_user_data_clone.notify_waiters();
+                    tracing::info!("updated user data");
                 }
             });
 
